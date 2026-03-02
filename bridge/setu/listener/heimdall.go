@@ -16,7 +16,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	checkpointTypes "github.com/maticnetwork/heimdall/checkpoint/types"
 	clerkTypes "github.com/maticnetwork/heimdall/clerk/types"
-	featureManagerTypes "github.com/maticnetwork/heimdall/featuremanager/types"
 	slashingTypes "github.com/maticnetwork/heimdall/slashing/types"
 	stakingTypes "github.com/maticnetwork/heimdall/staking/types"
 	htype "github.com/maticnetwork/heimdall/types"
@@ -48,8 +47,17 @@ func (hl *HeimdallListener) Start() error {
 
 	// Heimdall pollIntervall = (minimal pollInterval of rootchain and matichain)
 	pollInterval := helper.GetConfig().EthSyncerPollInterval
-	if helper.GetConfig().CheckpointerPollInterval < helper.GetConfig().EthSyncerPollInterval {
-		pollInterval = helper.GetConfig().CheckpointerPollInterval
+
+	checkpointPollInterval := helper.GetConfig().CheckpointerPollInterval
+
+	// fetch initial checkpoint params (will retry up to 10 times or exit service)
+	checkpointParams := util.GetCheckpointParamsWithRetry(hl.cliCtx)
+	if checkpointParams.CheckpointPollInterval > 0 {
+		checkpointPollInterval = checkpointParams.CheckpointPollInterval
+	}
+
+	if checkpointPollInterval < helper.GetConfig().EthSyncerPollInterval {
+		pollInterval = checkpointPollInterval
 	}
 
 	hl.Logger.Info("Start polling for events", "pollInterval", pollInterval)
@@ -293,12 +301,12 @@ func (hl *HeimdallListener) StartPollingEventRecord(ctx context.Context, pollInt
 }
 
 func (hl *HeimdallListener) loadEventRecords(ctx context.Context, pollInterval time.Duration) {
-	targetFeature, err := util.GetTargetFeatureConfig(hl.cliCtx, featureManagerTypes.DynamicCheckpoint)
-	if err != nil || !targetFeature.IsOpen {
-		hl.Logger.Info("Feature not supported... goroutine exists")
-
-		return
-	}
+	//targetFeature, err := util.GetTargetFeatureConfig(hl.cliCtx, featureManagerTypes.DynamicCheckpoint)
+	//if err != nil || !targetFeature.IsOpen {
+	//	hl.Logger.Info("Feature not supported... goroutine exists")
+	//
+	//	return
+	//}
 
 	if atomic.LoadUint32(&hl.stateSyncedInitializationRun) == 1 {
 		hl.Logger.Info("Last ProcessEventRecords not finished... goroutine exists")
