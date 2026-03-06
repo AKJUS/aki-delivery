@@ -96,9 +96,10 @@ const (
 	DefaultBscBusyLimitTxs  = 1000
 	DefaultTronBusyLimitTxs = 20000
 
-	DefaultEthMaxQueryBlocks  = 100
-	DefaultBscMaxQueryBlocks  = 5
-	DefaultTronMaxQueryBlocks = 5
+	DefaultEthMaxQueryBlocks      = 100
+	DefaultBscMaxQueryBlocks      = 5
+	DefaultTronMaxQueryBlocks     = 5
+	DefaultHeimdallMaxQueryBlocks = 1000
 
 	DefaultBttcChainID string = "15001"
 
@@ -163,9 +164,10 @@ type Configuration struct {
 	BscUnconfirmedTxsBusyLimit  int `mapstructure:"bsc_unconfirmed_txs_busy_limit"`  // the busy limit of unconfirmed txs on heimdall for bsc
 	TronUnconfirmedTxsBusyLimit int `mapstructure:"tron_unconfirmed_txs_busy_limit"` // the busy limit of unconfirmed txs on heimdall for tron
 
-	EthMaxQueryBlocks  int64 `mapstructure:"eth_max_query_blocks"`  // eth max number of blocks in one query logs
-	BscMaxQueryBlocks  int64 `mapstructure:"bsc_max_query_blocks"`  // bsc max number of blocks in one query logs
-	TronMaxQueryBlocks int64 `mapstructure:"tron_max_query_blocks"` // tron max number of blocks in one query logs
+	EthMaxQueryBlocks      int64 `mapstructure:"eth_max_query_blocks"`      // eth max number of blocks in one query logs
+	BscMaxQueryBlocks      int64 `mapstructure:"bsc_max_query_blocks"`      // bsc max number of blocks in one query logs
+	TronMaxQueryBlocks     int64 `mapstructure:"tron_max_query_blocks"`     // tron max number of blocks in one query logs
+	HeimdallMaxQueryBlocks int64 `mapstructure:"heimdall_max_query_blocks"` // heimdall max number of blocks in one query logs
 }
 
 var conf Configuration
@@ -324,9 +326,10 @@ func GetDefaultHeimdallConfig() Configuration {
 		BscUnconfirmedTxsBusyLimit:  DefaultBscBusyLimitTxs,
 		TronUnconfirmedTxsBusyLimit: DefaultTronBusyLimitTxs,
 
-		EthMaxQueryBlocks:  DefaultEthMaxQueryBlocks,
-		BscMaxQueryBlocks:  DefaultBscMaxQueryBlocks,
-		TronMaxQueryBlocks: DefaultTronMaxQueryBlocks,
+		EthMaxQueryBlocks:      DefaultEthMaxQueryBlocks,
+		BscMaxQueryBlocks:      DefaultBscMaxQueryBlocks,
+		TronMaxQueryBlocks:     DefaultTronMaxQueryBlocks,
+		HeimdallMaxQueryBlocks: DefaultHeimdallMaxQueryBlocks,
 	}
 }
 
