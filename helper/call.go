@@ -1106,7 +1106,7 @@ func (c *ContractCaller) GetTronHeaderInfo(headerID uint64, contractAddress stri
 	}
 
 	// Call
-	data, err := c.TronChainRPC.TriggerConstantContract(contractAddress, btsPack)
+	data, err := c.TronChainRPC.TriggerConstantContractWithRetry(contractAddress, btsPack)
 	if err != nil {
 		return root, 0, 0, 0, types.HeimdallAddress{}, err
 	}
@@ -1136,7 +1136,7 @@ func (c *ContractCaller) GetSyncedCheckpointId(contractAddress string, rootChain
 	}
 
 	// Call
-	data, err := c.TronChainRPC.TriggerConstantContract(contractAddress, btsPack)
+	data, err := c.TronChainRPC.TriggerConstantContractWithRetry(contractAddress, btsPack)
 	if err != nil {
 		return 0, err
 	}
