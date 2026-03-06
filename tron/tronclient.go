@@ -87,7 +87,7 @@ func (tc *Client) TriggerConstantContractWithRetry(contractAddress string, data 
 	var response []byte
 	var err error
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := 1; attempt <= maxRetries; attempt++ {
 		response, err = tc.TriggerConstantContract(contractAddress, data)
 
 		if err == nil && response != nil {
@@ -96,8 +96,8 @@ func (tc *Client) TriggerConstantContractWithRetry(contractAddress string, data 
 		}
 		log.Error("Failed to trigger tron constant contract",
 			"err", err, "attempt", attempt, "maxRetries", maxRetries)
-		if attempt < maxRetries-1 {
-			delay := attempt + 1
+		if attempt < maxRetries {
+			delay := attempt
 			time.Sleep(time.Duration(delay) * time.Second)
 		}
 	}
