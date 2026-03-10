@@ -2,11 +2,10 @@ package helper
 
 import (
 	"encoding/hex"
+	"github.com/stretchr/testify/require"
 	"math/big"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 
 	authTypes "github.com/maticnetwork/heimdall/auth/types"
 	"github.com/maticnetwork/heimdall/contracts/rootchain"
@@ -77,4 +76,20 @@ func TestCalcCheckpointTimeout2(t *testing.T) {
 	pollTime := 5 * time.Minute
 	checkpointTimeout, _ := CalcCheckpointTimeout(tronMaxLength, pollTime)
 	require.Equal(t, 40*time.Minute, checkpointTimeout, "checkpointTimeout should match")
+}
+
+func TestCalcCheckpointTimeout3(t *testing.T) {
+	tronMaxLength := 0
+	pollTime := 5 * time.Minute
+	checkpointTimeout, err := CalcCheckpointTimeout(tronMaxLength, pollTime)
+	require.Equal(t, 0*time.Minute, checkpointTimeout, "checkpointTimeout should match")
+	require.True(t, err != nil)
+}
+
+func TestCalcCheckpointTimeout4(t *testing.T) {
+	tronMaxLength := 1024
+	pollTime := 0 * time.Minute
+	checkpointTimeout, err := CalcCheckpointTimeout(tronMaxLength, pollTime)
+	require.Equal(t, 0*time.Minute, checkpointTimeout, "checkpointTimeout should match")
+	require.True(t, err != nil)
 }
