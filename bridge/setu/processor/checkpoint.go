@@ -99,15 +99,23 @@ func (cp *CheckpointProcessor) startPolling(ctx context.Context) {
 	now := time.Now()
 	baseTime := time.Unix(0, 0)
 	// no-ack ticker interval keep same with checkpoint interval
-	noAckInterval := helper.GetConfig().CheckpointerPollInterval
+	checkpointPollInterval := helper.GetConfig().CheckpointerPollInterval
+
+	// fetch initial checkpoint params (will retry up to 10 times or exit service)
+	checkpointParams := util.GetCheckpointParamsWithRetry(cp.cliCtx)
+	if checkpointParams.CheckpointPollInterval > 0 {
+		checkpointPollInterval = checkpointParams.CheckpointPollInterval
+	}
+
 	// adjust no-ack ticker to tick at the middle of checkpoint interval
-	firstIntervalForNoAck := noAckInterval - (now.UTC().Sub(baseTime) % noAckInterval) - noAckInterval/2 // nolint: gomnd
+	firstIntervalForNoAck := checkpointPollInterval - (now.UTC().Sub(baseTime) % checkpointPollInterval) - checkpointPollInterval/2 // nolint: gomnd
 	if firstIntervalForNoAck <= 0 {
-		firstIntervalForNoAck += noAckInterval
+		firstIntervalForNoAck += checkpointPollInterval
 	}
 
 	tickerForNoAck := time.NewTicker(firstIntervalForNoAck)
-	syncInterval := helper.GetConfig().CheckpointerPollInterval / 2
+	syncInterval := checkpointPollInterval / 2
+	noAckInterval := checkpointPollInterval
 	tickerForSync := time.NewTicker(syncInterval)
 	// stop ticker when everything done
 	defer tickerForNoAck.Stop()
@@ -568,10 +576,10 @@ func (cp *CheckpointProcessor) createAndSendCheckpointToHeimdall(checkpointConte
 	latestCheckpoint, err := util.GetlastestCheckpoint(cp.cliCtx, rootChain)
 	// event checkpoint is older than or equal to latest checkpoint
 	if err == nil && latestCheckpoint != nil && latestCheckpoint.EndBlock+1 < start {
-		cp.Logger.Debug("Need to resubmit Checkpoint ack first", "start", start, "last_end", latestCheckpoint.EndBlock)
+		cp.Logger.Info("Need to resubmit Checkpoint ack first", "start", start, "last_end", latestCheckpoint.EndBlock)
 		err := cp.resubmitCheckpointAck(checkpointContext, rootChain)
 		if err != nil {
-			cp.Logger.Info("Error while resubmit checkpoint ack", "root", rootChain, "err", err)
+			cp.Logger.Error("Error while resubmit checkpoint ack", "root", rootChain, "err", err)
 			return err
 		}
 		return nil
@@ -840,16 +848,40 @@ func (cp *CheckpointProcessor) checkIfNoAckIsRequired(checkpointContext *Checkpo
 	currentTime := time.Now().UTC()
 
 	timeDiff := currentTime.Sub(checkpointCreationTime)
-	if timeDiff.Seconds() >= helper.GetConfig().CheckpointerPollInterval.Seconds() && index == 0 {
-		index = math.Floor(timeDiff.Seconds() / helper.GetConfig().CheckpointerPollInterval.Seconds())
+
+	// checkpoint params
+	checkpointParams := checkpointContext.CheckpointParams
+
+	var checkpointPollInterval time.Duration
+	if checkpointParams.CheckpointPollInterval > 0 {
+		checkpointPollInterval = checkpointParams.CheckpointPollInterval
+	} else {
+		checkpointPollInterval = helper.GetConfig().CheckpointerPollInterval
+	}
+
+	var checkpointTimeout time.Duration
+	isOpen, tronMaxLength, err := cp.getTronDynamicCheckpointProposalWithErr()
+	if err != nil {
+		cp.Logger.Error("failed to check if no ack is required. Error while fetching dynamic checkpoint feature", "error", err)
+		return false, uint64(index)
+	}
+	if isOpen {
+		checkpointTimeout, err = helper.CalcCheckpointTimeout(tronMaxLength, checkpointPollInterval)
+		if err != nil {
+			cp.Logger.Error("failed to CalcCheckpointTimeout", "error", err)
+			return false, uint64(index)
+		}
+	} else {
+		checkpointTimeout = checkpointPollInterval
+	}
+
+	if timeDiff.Seconds() >= checkpointTimeout.Seconds() && index == 0 {
+		index = math.Floor(timeDiff.Seconds() / checkpointTimeout.Seconds())
 	}
 
 	if index == 0 {
 		return false, uint64(index)
 	}
-
-	// checkpoint params
-	checkpointParams := checkpointContext.CheckpointParams
 
 	// check if difference between no-ack time and current time
 	lastNoAck := cp.getLastNoAckTime()
@@ -991,9 +1023,7 @@ func (cp *CheckpointProcessor) Stop() {
 	cp.cancelNoACKPolling()
 }
 
-//
 // utils
-//
 func (cp *CheckpointProcessor) getCheckpointContext(rootChain string) (*CheckpointContext, error) {
 	// fetch chain params for different root chains
 	chainmanagerParams, err := util.GetNewChainParams(cp.cliCtx, rootChain)
@@ -1089,4 +1119,14 @@ func (cp *CheckpointProcessor) getDynamicCheckpointProposal(rootType string) (bo
 	}
 
 	return fea.IsOpen, fea.IntConf[strings.ToLower(rootType)] != 0, fea.IntConf["maxLength"]
+}
+
+func (cp *CheckpointProcessor) getTronDynamicCheckpointProposalWithErr() (bool, int, error) {
+	fea, err := util.GetTronDynamicCheckpointFeature(cp.cliCtx)
+	if err != nil {
+		cp.Logger.Error("Error while fetching dynamic checkpoint feature", "error", err)
+
+		return false, 0, err
+	}
+	return fea.IsOpen, fea.IntConf["maxLength"], err
 }
