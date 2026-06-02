@@ -22,7 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func GenerateAuthObj(client *ethclient.Client, address common.Address, data []byte, enableIncreaseGasPrice bool) (auth *bind.TransactOpts, err error) {
+func GenerateAuthObj(client *ethclient.Client, address common.Address, data []byte) (auth *bind.TransactOpts, err error) {
 	// generate call msg
 	callMsg := ethereum.CallMsg{
 		To:   &address,
@@ -44,18 +44,6 @@ func GenerateAuthObj(client *ethclient.Client, address common.Address, data []by
 	gasprice, err := client.SuggestGasPrice(context.Background())
 	if err != nil {
 		return
-	}
-
-	if enableIncreaseGasPrice {
-		gasPriceIncreasePercent := GetConfig().GasPriceIncreasePercent
-		if gasPriceIncreasePercent > 0 {
-			multiplier := big.NewInt(100 + gasPriceIncreasePercent)
-			divisor := big.NewInt(100)
-			originGasPrice := gasprice
-			gasprice = new(big.Int).Mul(gasprice, multiplier)
-			gasprice.Div(gasprice, divisor)
-			Logger.Debug("Adjust gas price", "originGasPrice", originGasPrice, "adjustedGasPrice", gasprice)
-		}
 	}
 
 	mainChainMaxGasPrice := GetConfig().MainchainMaxGasPrice
@@ -118,15 +106,7 @@ func (c *ContractCaller) SendCheckpoint(signedData []byte, sigs [][3]*big.Int,
 	case hmtypes.RootChainTypeBsc:
 		client = GetBscClient()
 	}
-	var auth *bind.TransactOpts
-
-	if rootChain == hmtypes.RootChainTypeEth {
-		enableIncreaseGasPrice := GetConfig().EnableIncreaseGasPrice
-		auth, err = GenerateAuthObj(client, rootChainAddress, data, enableIncreaseGasPrice)
-	} else {
-		auth, err = GenerateAuthObj(client, rootChainAddress, data, false)
-	}
-
+	auth, err := GenerateAuthObj(client, rootChainAddress, data)
 	if err != nil {
 		Logger.Error("Unable to create auth object", "error", err)
 		return err
@@ -161,7 +141,7 @@ func (c *ContractCaller) SendTick(signedData []byte, sigs []byte, slashManagerAd
 		return err
 	}
 
-	auth, err := GenerateAuthObj(GetMainClient(), slashManagerAddress, data, false)
+	auth, err := GenerateAuthObj(GetMainClient(), slashManagerAddress, data)
 	if err != nil {
 		Logger.Error("Unable to create auth object", "error", err)
 		return err
@@ -193,7 +173,7 @@ func (c *ContractCaller) StakeFor(val common.Address, stakeAmount *big.Int, feeA
 		return err
 	}
 
-	auth, err := GenerateAuthObj(GetMainClient(), stakeManagerAddress, data, false)
+	auth, err := GenerateAuthObj(GetMainClient(), stakeManagerAddress, data)
 	if err != nil {
 		Logger.Error("Unable to create auth object", "error", err)
 		return err
@@ -226,7 +206,7 @@ func (c *ContractCaller) ApproveTokens(amount *big.Int, stakeManager common.Addr
 		return err
 	}
 
-	auth, err := GenerateAuthObj(GetMainClient(), tokenAddress, data, false)
+	auth, err := GenerateAuthObj(GetMainClient(), tokenAddress, data)
 	if err != nil {
 		Logger.Error("Unable to create auth object", "error", err)
 		return err
@@ -322,7 +302,7 @@ func (c *ContractCaller) SendMainStakingSync(syncMethod string, signedData []byt
 	case hmtypes.RootChainTypeBsc:
 		client = GetBscClient()
 	}
-	auth, err := GenerateAuthObj(client, stakingManager, data, false)
+	auth, err := GenerateAuthObj(client, stakingManager, data)
 	if err != nil {
 		Logger.Error("Unable to create auth object", "error", err)
 		return err

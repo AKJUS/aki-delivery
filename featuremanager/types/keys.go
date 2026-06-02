@@ -18,9 +18,8 @@ const (
 )
 
 const (
-	SupportMapMarshaling  = "SupportMapMarshaling"
-	DynamicCheckpoint     = "DynamicCheckpoint"
-	FinalizedEth          = "FinalizedEth"
-	NoAckValidatorCheck   = "NoAckValidatorCheck"
-	TronDynamicCheckpoint = "TronDynamicCheckpoint"
+	SupportMapMarshaling = "SupportMapMarshaling"
+	DynamicCheckpoint    = "DynamicCheckpoint"
+	FinalizedEth         = "FinalizedEth"
+	NoAckValidatorCheck  = "NoAckValidatorCheck"
 )

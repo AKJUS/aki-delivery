@@ -3,11 +3,9 @@ package tron
 import (
 	"context"
 	"fmt"
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -38,7 +36,9 @@ func NewClient(url string) *Client {
 	}
 }
 
+//
 // private abi methods
+//
 func getABI(data string) (abi.ABI, error) {
 	return abi.JSON(strings.NewReader(data))
 }
@@ -81,28 +81,6 @@ func (tc *Client) TriggerConstantContract(contractAddress string, data []byte) (
 	return response.ConstantResult[0], nil
 }
 
-func (tc *Client) TriggerConstantContractWithRetry(contractAddress string, data []byte) ([]byte, error) {
-	const maxRetries = 5
-
-	var response []byte
-	var err error
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		response, err = tc.TriggerConstantContract(contractAddress, data)
-
-		if err == nil && response != nil {
-			log.Info("Successfully trigger tron constant contract", "attempt", attempt)
-			break
-		}
-		log.Error("Failed to trigger tron constant contract",
-			"err", err, "attempt", attempt, "maxRetries", maxRetries)
-		if attempt < maxRetries {
-			delay := attempt
-			time.Sleep(time.Duration(delay) * time.Second)
-		}
-	}
-	return response, err
-}
 func (tc *Client) GetNowBlock(ctx context.Context) (int64, error) {
 	block, err := tc.client.GetNowBlock2(ctx, &pb.EmptyMessage{})
 	if err != nil {
@@ -122,7 +100,7 @@ func (tc *Client) CurrentHeaderBlock(contractAddress string, childBlockInterval 
 	}
 
 	// Call
-	data, err := tc.TriggerConstantContractWithRetry(contractAddress, btsPack)
+	data, err := tc.TriggerConstantContract(contractAddress, btsPack)
 	if err != nil {
 		return 0, err
 	}
@@ -147,7 +125,7 @@ func (tc *Client) GetLastChildBlock(contractAddress string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	data, err := tc.TriggerConstantContractWithRetry(contractAddress, btsPack)
+	data, err := tc.TriggerConstantContract(contractAddress, btsPack)
 	if err != nil {
 		return 0, err
 	}
