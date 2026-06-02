@@ -426,40 +426,6 @@ func GetCheckpointParams(cliCtx cliContext.CLIContext) (*checkpointTypes.Params,
 	return &params, nil
 }
 
-// GetCheckpointParamsWithRetry guarantees successful retrieval of checkpoint parameters
-// by retrying up to 10 times. If it fails after 10 attempts, the service will exit.
-func GetCheckpointParamsWithRetry(cliCtx cliContext.CLIContext) *checkpointTypes.Params {
-	const maxRetries = 10
-	retryDelay := 1 * time.Second
-	maxRetryDelay := 30 * time.Second
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		params, err := GetCheckpointParams(cliCtx)
-		if err == nil {
-			logger.Info("Successfully fetched checkpoint params", "attempt", attempt)
-			return params
-		}
-
-		logger.Error("Failed to fetch checkpoint params, retrying...",
-			"err", err, "attempt", attempt, "maxRetries", maxRetries, "retryAfter", retryDelay)
-
-		if attempt < maxRetries {
-			time.Sleep(retryDelay)
-
-			// Exponential backoff with cap
-			retryDelay *= 2
-			if retryDelay > maxRetryDelay {
-				retryDelay = maxRetryDelay
-			}
-		}
-	}
-
-	logger.Error("Unexpected: exceeded retry loop without returning or exiting")
-
-	panic(errors.New("Failed to fetch checkpoint params"))
-	return nil
-}
-
 // GetBufferedCheckpoint return checkpoint from bueffer
 func GetBufferedCheckpoint(cliCtx cliContext.CLIContext, rootChain string) (*hmtypes.Checkpoint, error) {
 	response, err := helper.FetchFromAPI(
@@ -602,10 +568,6 @@ func getTopics(topicStr [][]string) [][]common.Hash {
 
 func GetDynamicCheckpointFeature(cliCtx cliContext.CLIContext) (*featureManagerTypes.PlainFeatureData, error) {
 	return GetTargetFeatureConfig(cliCtx, featureManagerTypes.DynamicCheckpoint)
-}
-
-func GetTronDynamicCheckpointFeature(cliCtx cliContext.CLIContext) (*featureManagerTypes.PlainFeatureData, error) {
-	return GetTargetFeatureConfig(cliCtx, featureManagerTypes.TronDynamicCheckpoint)
 }
 
 func GetFinalizedEthOpen(cliCtx cliContext.CLIContext) bool {

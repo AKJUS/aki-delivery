@@ -3,7 +3,6 @@ package listener
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"strconv"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	checkpointTypes "github.com/maticnetwork/heimdall/checkpoint/types"
 	clerkTypes "github.com/maticnetwork/heimdall/clerk/types"
+	featureManagerTypes "github.com/maticnetwork/heimdall/featuremanager/types"
 	slashingTypes "github.com/maticnetwork/heimdall/slashing/types"
 	stakingTypes "github.com/maticnetwork/heimdall/staking/types"
 	htype "github.com/maticnetwork/heimdall/types"
@@ -48,17 +48,8 @@ func (hl *HeimdallListener) Start() error {
 
 	// Heimdall pollIntervall = (minimal pollInterval of rootchain and matichain)
 	pollInterval := helper.GetConfig().EthSyncerPollInterval
-
-	checkpointPollInterval := helper.GetConfig().CheckpointerPollInterval
-
-	// fetch initial checkpoint params (will retry up to 10 times or exit service)
-	checkpointParams := util.GetCheckpointParamsWithRetry(hl.cliCtx)
-	if checkpointParams.CheckpointPollInterval > 0 {
-		checkpointPollInterval = checkpointParams.CheckpointPollInterval
-	}
-
-	if checkpointPollInterval < helper.GetConfig().EthSyncerPollInterval {
-		pollInterval = checkpointPollInterval
+	if helper.GetConfig().CheckpointerPollInterval < helper.GetConfig().EthSyncerPollInterval {
+		pollInterval = helper.GetConfig().CheckpointerPollInterval
 	}
 
 	hl.Logger.Info("Start polling for events", "pollInterval", pollInterval)
@@ -113,9 +104,6 @@ func (hl *HeimdallListener) StartPolling(ctx context.Context, pollInterval time.
 
 				hl.Logger.Info("Fetching new events between", "fromBlock", fromBlock, "toBlock", toBlock)
 
-				// set to avoid deduplicate checkpoint-sync events by (rootChain, number, startBlock, endBlock)
-				checkpointSyncSet := make(map[string]struct{})
-
 				// Querying and processing Begin events
 				for i := fromBlock; i <= toBlock; i++ {
 					events, err := helper.GetBeginBlockEvents(hl.httpClient, int64(i))
@@ -123,7 +111,7 @@ func (hl *HeimdallListener) StartPolling(ctx context.Context, pollInterval time.
 						hl.Logger.Error("Error fetching begin block events", "error", err)
 					}
 					for _, event := range events {
-						hl.ProcessBlockEvent(sdk.StringifyEvent(event), int64(i), checkpointSyncSet)
+						hl.ProcessBlockEvent(sdk.StringifyEvent(event), int64(i))
 					}
 				}
 
@@ -206,18 +194,11 @@ func (hl *HeimdallListener) fetchFromAndToBlock() (uint64, uint64, error) {
 			return fromBlock, toBlock, err
 		}
 	}
-	maxQueryBlocks := helper.GetConfig().HeimdallMaxQueryBlocks
-	if maxQueryBlocks == 0 {
-		maxQueryBlocks = helper.DefaultHeimdallMaxQueryBlocks
-	}
-	if maxQueryBlocks != 0 && toBlock-fromBlock > uint64(maxQueryBlocks) {
-		toBlock = fromBlock + uint64(maxQueryBlocks)
-	}
 	return fromBlock, toBlock, err
 }
 
 // ProcessBlockEvent - process Blockevents (BeginBlock, EndBlock events) from heimdall.
-func (hl *HeimdallListener) ProcessBlockEvent(event sdk.StringEvent, blockHeight int64, checkpointSyncSet map[string]struct{}) {
+func (hl *HeimdallListener) ProcessBlockEvent(event sdk.StringEvent, blockHeight int64) {
 	hl.Logger.Info("Received block event from Heimdall", "eventType", event.Type, "height", blockHeight)
 	eventBytes, err := json.Marshal(event)
 	if err != nil {
@@ -229,13 +210,6 @@ func (hl *HeimdallListener) ProcessBlockEvent(event sdk.StringEvent, blockHeight
 	case checkpointTypes.EventTypeCheckpoint:
 		hl.sendBlockTask("sendCheckpointToRootchain", eventBytes, blockHeight)
 	case checkpointTypes.EventTypeCheckpointSync:
-		key := hl.getCheckpointSyncKey(event)
-		if _, exists := checkpointSyncSet[key]; exists {
-			hl.Logger.Info("CheckpointSync duplicate, skip sending task", "key", key)
-			return
-		}
-
-		checkpointSyncSet[key] = struct{}{}
 		hl.sendBlockTask("sendCheckpointSyncToStakeChain", eventBytes, blockHeight)
 	case slashingTypes.EventTypeSlashLimit:
 		hl.sendBlockTask("sendTickToHeimdall", eventBytes, blockHeight)
@@ -252,24 +226,6 @@ func (hl *HeimdallListener) ProcessBlockEvent(event sdk.StringEvent, blockHeight
 	default:
 		hl.Logger.Debug("BlockEvent Type mismatch", "eventType", event.Type)
 	}
-}
-
-func (hl *HeimdallListener) getCheckpointSyncKey(event sdk.StringEvent) string {
-	var rootChain string
-	var number, startBlock, endBlock uint64
-	for _, attr := range event.Attributes {
-		switch attr.Key {
-		case checkpointTypes.AttributeKeyRootChain:
-			rootChain = attr.Value
-		case checkpointTypes.AttributeKeyHeaderIndex:
-			number, _ = strconv.ParseUint(attr.Value, 10, 64)
-		case checkpointTypes.AttributeKeyStartBlock:
-			startBlock, _ = strconv.ParseUint(attr.Value, 10, 64)
-		case checkpointTypes.AttributeKeyEndBlock:
-			endBlock, _ = strconv.ParseUint(attr.Value, 10, 64)
-		}
-	}
-	return fmt.Sprintf("%s_%d_%d_%d", rootChain, number, startBlock, endBlock)
 }
 
 func (hl *HeimdallListener) sendBlockTask(taskName string, eventBytes []byte, blockHeight int64) {
@@ -337,12 +293,12 @@ func (hl *HeimdallListener) StartPollingEventRecord(ctx context.Context, pollInt
 }
 
 func (hl *HeimdallListener) loadEventRecords(ctx context.Context, pollInterval time.Duration) {
-	//targetFeature, err := util.GetTargetFeatureConfig(hl.cliCtx, featureManagerTypes.DynamicCheckpoint)
-	//if err != nil || !targetFeature.IsOpen {
-	//	hl.Logger.Info("Feature not supported... goroutine exists")
-	//
-	//	return
-	//}
+	targetFeature, err := util.GetTargetFeatureConfig(hl.cliCtx, featureManagerTypes.DynamicCheckpoint)
+	if err != nil || !targetFeature.IsOpen {
+		hl.Logger.Info("Feature not supported... goroutine exists")
+
+		return
+	}
 
 	if atomic.LoadUint32(&hl.stateSyncedInitializationRun) == 1 {
 		hl.Logger.Info("Last ProcessEventRecords not finished... goroutine exists")
